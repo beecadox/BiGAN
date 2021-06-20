@@ -39,9 +39,9 @@ class Generator(nn.Module):
                 m.bias.data.fill_(0)
 
 
-class DiscriminatorFC(nn.Module):
+class Discriminator(nn.Module):
     def __init__(self, latent_dim=128, n_features=(256, 512)):
-        super(DiscriminatorFC, self).__init__()
+        super(Discriminator, self).__init__()
         self.n_features = list(n_features)
 
         model = []

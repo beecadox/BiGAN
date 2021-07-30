@@ -1,23 +1,33 @@
 import sys
 import os
 import os.path as path
+import shutil
+import json
+import argparse
+
+
+def ensure_exists_dirs(paths):
+    """
+    create paths by first checking their existence
+    :param paths: list of path
+    :return:
+    """
+    if isinstance(paths, list) and not isinstance(paths, str):
+        for path in paths:
+            if not os.path.exists(path):
+                os.makedirs(path)
+    else:
+        if not os.path.exists(paths):
+            os.makedirs(paths)
 
 
 def addpath(path):
-    sys.path.inser(0, path)
+    sys.path.insert(0, path)
 
 
 def get_config(phase):
     config = Config(phase)
     return config
-
-
-class Config(object):
-
-    def __init__(self, phase):
-        # GPU usage
-        if args.gpu_ids is not None:
-            os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_ids)
 
 
 class Config(object):
@@ -46,7 +56,7 @@ class Config(object):
 
         self.log_dir = os.path.join(self.exp_dir, 'log')
         self.model_dir = os.path.join(self.exp_dir, 'model')
-        ensure_dirs([self.log_dir, self.model_dir])
+        ensure_exists_dirs([self.log_dir, self.model_dir])
 
         # GPU usage
         if args.gpu_ids is not None:

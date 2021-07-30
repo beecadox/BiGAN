@@ -89,5 +89,6 @@ def test_process():
 
 
 if __name__ == '__main__':
+    # python data_processing/shapenet.py
     test_process()
 

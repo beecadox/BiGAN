@@ -2,12 +2,12 @@ import torch
 import torch.nn as nn
 from common import Lambda, SavableModule
 
-
 VAE_MULTIPLIER = 24
 standard_normal_distribution = torch.distributions.normal.Normal(0, 1)
 LATENT_CODE_SIZE = 128
 
 
+# 3D CNNS
 class VariationalAutoencoder(SavableModule):
     def __init__(self):
         super(VariationalAutoencoder, self).__init__(filename="vae-{:d}.to".format(LATENT_CODE_SIZE))
@@ -17,16 +17,18 @@ class VariationalAutoencoder(SavableModule):
             nn.BatchNorm3d(1 * VAE_MULTIPLIER),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
 
-            nn.Conv3d(in_channels=1 * VAE_MULTIPLIER, out_channels=2 * VAE_MULTIPLIER, kernel_size=(4, 4), stride=(2, 2), padding=1),
+            nn.Conv3d(in_channels=1 * VAE_MULTIPLIER, out_channels=2 * VAE_MULTIPLIER, kernel_size=(4, 4),
+                      stride=(2, 2), padding=1),
             nn.BatchNorm3d(2 * VAE_MULTIPLIER),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
 
-            nn.Conv3d(in_channels=2 * VAE_MULTIPLIER, out_channels=4 * VAE_MULTIPLIER, kernel_size=(4, 4), stride=(2, 2), padding=1),
+            nn.Conv3d(in_channels=2 * VAE_MULTIPLIER, out_channels=4 * VAE_MULTIPLIER, kernel_size=(4, 4),
+                      stride=(2, 2), padding=1),
             nn.BatchNorm3d(4 * VAE_MULTIPLIER),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
 
             nn.Conv3d(in_channels=4 * VAE_MULTIPLIER, out_channels=2 * LATENT_CODE_SIZE, kernel_size=(4, 4), stride=1),
-            nn.BatchNorm3d(2* LATENT_CODE_SIZE),
+            nn.BatchNorm3d(2 * LATENT_CODE_SIZE),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
 
             Lambda(lambda x: x.reshape(x.shape[0], -1)),
@@ -47,19 +49,23 @@ class VariationalAutoencoder(SavableModule):
 
             Lambda(lambda x: x.reshape(-1, LATENT_CODE_SIZE * 2, 1, 1, 1)),
 
-            nn.ConvTranspose3d(in_channels=LATENT_CODE_SIZE * 2, out_channels=4 * VAE_MULTIPLIER, kernel_size=(4, 4), stride=(1, 1)),
+            nn.ConvTranspose3d(in_channels=LATENT_CODE_SIZE * 2, out_channels=4 * VAE_MULTIPLIER, kernel_size=(4, 4),
+                               stride=(1, 1)),
             nn.BatchNorm3d(4 * VAE_MULTIPLIER),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
 
-            nn.ConvTranspose3d(in_channels=4 * VAE_MULTIPLIER, out_channels=2 * VAE_MULTIPLIER, kernel_size=(4, 4), stride=(2, 2), padding=1),
+            nn.ConvTranspose3d(in_channels=4 * VAE_MULTIPLIER, out_channels=2 * VAE_MULTIPLIER, kernel_size=(4, 4),
+                               stride=(2, 2), padding=1),
             nn.BatchNorm3d(2 * VAE_MULTIPLIER),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
 
-            nn.ConvTranspose3d(in_channels=2 * VAE_MULTIPLIER, out_channels=1 * VAE_MULTIPLIER, kernel_size=(4, 4), stride=(2, 2), padding=1),
+            nn.ConvTranspose3d(in_channels=2 * VAE_MULTIPLIER, out_channels=1 * VAE_MULTIPLIER, kernel_size=(4, 4),
+                               stride=(2, 2), padding=1),
             nn.BatchNorm3d(1 * VAE_MULTIPLIER),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
 
-            nn.ConvTranspose3d(in_channels=1 * VAE_MULTIPLIER, out_channels=1, kernel_size=(4, 4), stride=(2, 2), padding=1)
+            nn.ConvTranspose3d(in_channels=1 * VAE_MULTIPLIER, out_channels=1, kernel_size=(4, 4), stride=(2, 2),
+                               padding=1)
         )
         self.cuda()
 

@@ -5,6 +5,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 from process import DataProcess, get_while_running, kill_data_processes
 from data_utils import load_h5, load_csv, augment_cloud, pad_cloudN
 from visualization import plot_pcds
@@ -46,6 +47,7 @@ class ShapenetDataProcess(DataProcess):
         partial = pair[0].T
         target = pair[1]
         cloud_meta = ['{}.{:d}'.format('/'.join(fname.split('/')[-2:]), 0), ]
+
         return target[np.newaxis, ...], cloud_meta, partial[np.newaxis, ...]
 
     def collate(self, batch):
@@ -62,7 +64,7 @@ def test_process():
     parser = argparse.ArgumentParser(description='')
     args = parser.parse_args()
     args.dataset = 'shapenet'
-    args.nworkers = 4
+    args.nworkers = 1
     args.batch_size = 1
     args.pc_augm_scale = 0
     args.pc_augm_rot = 0
@@ -79,8 +81,8 @@ def test_process():
     for targets, clouds_data in get_while_running(data_processes, data_queue, 0.5):
         inp = clouds_data[1][0].squeeze().T
         targets = targets[0]
-
-        plot_pcds(None, [inp.squeeze(), targets.squeeze()], ['partial', 'gt'], use_color=[0, 0], color=[None, None])
+        print(clouds_data[0][0])
+        plot_pcds(None, [inp.squeeze(), targets.squeeze()], ['partial', 'gt'], use_color=[0, 0], color=[None, None], suptitle=clouds_data[0][0])
 
     kill_data_processes(data_queue, data_processes)
 

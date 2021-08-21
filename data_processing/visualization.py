@@ -51,7 +51,7 @@ def plot_pcds(filename, pcds, titles, use_color=[], color=None, suptitle='', siz
             ax = fig.add_subplot(1, len(pcds), i * len(pcds) + j + 1, projection='3d')
             ax.view_init(elev, azim)
             ax.scatter(pcd[:, 0], pcd[:, 1], pcd[:, 2], zdir=zdir, c=clr, s=size, cmap=cmap, vmin=-1, vmax=0.5)
-            ax.set_title(titles[j])
+            ax.set_title(titles[j], y=-0.01)
             ax.set_axis_off()
             ax.set_xlim(xlim)
             ax.set_ylim(ylim)

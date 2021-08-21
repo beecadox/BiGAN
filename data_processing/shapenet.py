@@ -12,7 +12,7 @@ from visualization import plot_pcds
 
 class ShapenetDataProcess(DataProcess):
 
-    def __init__(self, data_queue, args, split='train', repeat=True):
+    def __init__(self, data_queue, args, split='test', repeat=True):
         """Shapenet dataloader.
         Args:
             data_queue: multiprocessing queue where data is stored at.
@@ -21,7 +21,7 @@ class ShapenetDataProcess(DataProcess):
         """
         self.args = args
         self.split = split
-        args.DATA_PATH = './data/%s' % (args.dataset)
+        args.DATA_PATH = '../data/%s' % (args.dataset)
         classmap = load_csv(args.DATA_PATH + '/synsetoffset2category.txt')
         args.classmap = {}
         for i in range(classmap.shape[0]):
@@ -35,10 +35,7 @@ class ShapenetDataProcess(DataProcess):
 
     def get_pair(self, args, fname, train):
         partial = load_h5(fname)
-        if self.split == 'test':
-            gtpts = partial
-        else:
-            gtpts = load_h5(fname.replace('partial', 'gt'))
+        gtpts = load_h5(fname.replace('partial', 'gt'))
         if train:
             gtpts, partial = augment_cloud([gtpts, partial], args)
         partial = pad_cloudN(partial, args.inpts)
@@ -75,7 +72,7 @@ def test_process():
     data_processes = []
     data_queue = Queue(1)
     for i in range(args.nworkers):
-        data_processes.append(ShapenetDataProcess(data_queue, args, split='train',
+        data_processes.append(ShapenetDataProcess(data_queue, args, split='test',
                                                   repeat=False))
         data_processes[-1].start()
 

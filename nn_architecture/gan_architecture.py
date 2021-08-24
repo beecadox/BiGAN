@@ -1,72 +1,104 @@
 import torch
 import torch.nn as nn
+from nn_architecture.common import initialize_weights
 
 
 class Generator(nn.Module):
-    def __init__(self, latent_dim=128, noise_dim=8, n_features=(256, 512)):
+    def __init__(self):
         super(Generator, self).__init__()
+        self.model = nn.Sequential(
+            nn.Linear(136, 256),
+            nn.LeakyReLU(True),
+            nn.Linear(256, 512),
+            nn.LeakyReLU(True),
+            nn.Linear(512, 128)
+        )
+        self.apply(initialize_weights)
 
-        # def block(, ):
-
-        self.n_features = list(n_features)
-
-        model = []
-        prev_nf = latent_dim + noise_dim
-        for idx, nf in enumerate(self.n_features):
-            model.append(nn.Linear(prev_nf, nf))
-            model.append(nn.LeakyReLU(inplace=True))
-            prev_nf = nf
-
-        model.append(nn.Linear(self.n_features[-1], latent_dim))
-
-        self.model = nn.Sequential(*model)
-
-        self._initialize_weights()
-
-    def forward(self, x, noise, y=None):
-        y = torch.cat([x, noise], dim=1)
-        y = self.model(y)
-        return y
-
-    def _initialize_weights(self) -> None:
-        for m in self.modules():
-            classname = m.__class__.__name__
-            if classname.find('Linear') != -1:
-                m.weight.data.normal_(0.0, 0.02)
-                m.bias.data.fill_(0)
-            elif classname.find('BatchNorm') != -1:
-                m.weight.data.normal_(1.0, 0.02)
-                m.bias.data.fill_(0)
+    def forward(self, x, noise):
+        x = torch.cat([x, noise], 1)
+        x = self.model(x)
+        return x
 
 
 class Discriminator(nn.Module):
-    def __init__(self, latent_dim=128, n_features=(256, 512)):
+    def __init__(self):
         super(Discriminator, self).__init__()
-        self.n_features = list(n_features)
-
-        model = []
-        prev_nf = latent_dim
-        for idx, nf in enumerate(self.n_features):
-            model.append(nn.Linear(prev_nf, nf))
-            model.append(nn.LeakyReLU(inplace=True))
-            prev_nf = nf
-
-        model.append(nn.Linear(self.n_features[-1], 1))
-
-        self.model = nn.Sequential(*model)
-
-        self._initialize_weights()
+        self.model = nn.Sequential(
+            nn.Linear(128, 256),
+            nn.LeakyReLU(True),
+            nn.Linear(256, 512),
+            nn.LeakyReLU(True),
+            nn.Linear(512, 1)
+        )
+        self.apply(initialize_weights)
 
     def forward(self, x):
         x = self.model(x).view(-1)
         return x
 
-    def _initialize_weights(self) -> None:
-        for m in self.modules():
-            classname = m.__class__.__name__
-            if classname.find('Linear') != -1:
-                m.weight.data.normal_(0.0, 0.02)
-                m.bias.data.fill_(0)
-            elif classname.find('BatchNorm') != -1:
-                m.weight.data.normal_(1.0, 0.02)
-                m.bias.data.fill_(0)
+
+class LatentEncoder(nn.Module):
+    def __init__(self):
+        super(LatentEncoder, self).__init__()
+
+        self.model = nn.Sequential(
+            nn.Linear(128, 256),
+            nn.LeakyReLU(True),
+            nn.Linear(256, 512),
+            nn.LeakyReLU(True)
+        )
+
+        self.fc_mean = nn.Linear(512, 8)
+        self.fc_logvar = nn.Linear(512, 8)
+
+
+    def forward(self, x):
+        x = self.model(x)
+        mean = self.fc_mean(x)
+        log_variance = self.fc_logvar(x)
+        var = torch.exp(log_variance / 2.)
+        eps = torch.distributions.normal.Normal(0, 1).sample(mean.shape).to(x.device)
+        z = mean + var * eps
+        return z, mean, log_variance
+
+
+class LatentEncoderPointNet(nn.Module):
+    def __init__(self):
+        super(LatentEncoderPointNet, self).__init__()
+
+        self.model = nn.Sequential(
+            nn.Conv1d(3, 64, (1, 1), (1, 1)),
+            nn.BatchNorm1d(64),
+            nn.LeakyReLU(0.2, True),
+
+            nn.Conv1d(64, 128, (1, 1), (1, 1)),
+            nn.BatchNorm1d(128),
+            nn.LeakyReLU(0.2, True),
+
+            nn.Conv1d(128, 128, (1, 1), (1, 1)),
+            nn.BatchNorm1d(128),
+            nn.LeakyReLU(0.2, True),
+
+            nn.Conv1d(128, 256, (1, 1), (1, 1)),
+            nn.BatchNorm1d(64),
+            nn.LeakyReLU(0.2, True),
+            nn.Conv1d(256, 128, (1, 1), (1, 1))
+        )
+
+        self.fc_mean = nn.Linear(128, 64)
+        self.fc_logvar = nn.Linear(128, 64)
+
+    def forward(self, x):
+        x = self.model(x)
+        x = torch.max(x, 2)[0]
+
+        mean = self.fc_mean(x)
+        log_variance = self.fc_logvar(x)
+        var = torch.exp(log_variance / 2.)
+        eps = torch.distributions.normal.Normal(0, 1).sample(mean.shape).to(x.device)
+        z = mean + var * eps
+        return z, mean, log_variance
+
+
+

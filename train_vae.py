@@ -1,71 +1,21 @@
-import os
-import sys
-from torch.optim import Adamax as amax
-from nn_architecture.autoencoder import *
-import time
-import numpy as np
-sys.path.append(os.getcwd())
-
-import random
-
-random.seed(0)
-torch.manual_seed(0)
-
-BATCH_SIZE = 32
-def save_model(args, epoch):
-    torch.save({'epoch': epoch + 1, 'args': args, 'state_dict': args.model.state_dict(),
-                'optimizer': args.optimizer.state_dict()},
-               os.path.join(args.odir, 'models/model_%d.pth.tar' % (epoch + 1)))
+import argparse
 
 
-vae = VariationalAutoencoder()
-vae.load()
-optimizer = amax(vae.parameters(), lr=0.0001)  # https://pytorch.org/docs/stable/generated/torch.optim.Adamax.html
-
-criterion = nn.CrossEntropyLoss
-
-def kld_loss(mean, log_variance):
-    return -0.5 * torch.sum(1 + log_variance - mean.pow(2) - log_variance.exp()) / mean.nelement()
-
-def get_reconstruction_loss(input, target):
-    difference = input - target
-    wrong_signs = target < 0
-    difference[wrong_signs] *= 32
-
-    return torch.mean(torch.abs(difference))
-
-def train():
-    for epoch in count():
-        batch_index = 0
-        epoch_start_time = time.time()
-        for batch in data_loader, desc='Epoch {:d}'.format(epoch):
-            try:
-                batch = batch.to(device)
-
-                vae.zero_grad()
-                vae.train()
-
-                output, mean, log_variance = vae(batch)
-                kld = kld_loss(mean, log_variance)
-
-                reconstruction_loss = get_reconstruction_loss(output, batch)
-                loss = reconstruction_loss + kld
-
-                reconstruction_error_history.append(reconstruction_loss.item())
-                kld_error_history.append(kld.item() if IS_VARIATIONAL else 0)
-
-                loss.backward()
-                optimizer.step()
+def main(args):
+    print("HEHE")
 
 
-                print("epoch " + str(epoch) + ", batch " + str(batch_index) \
-                      + ', reconstruction loss: {0:.4f}'.format(reconstruction_loss.item()) \
-                      + ' (average: {0:.4f}), '.format(np.mean(reconstruction_error_history)) \
-                      + 'KLD loss: {0:.4f}'.format(np.mean(kld_error_history)))
-
-                batch_index += 1
-
-        vae.save()
-        if epoch % 20 == 0:
-            vae.save(epoch=epoch)
-
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Give model configuration arguments.')
+    parser.add_argument('--proj_dir', type=str, default='proj_log', help='project directory')
+    parser.add_argument('--model', type=str, default='vae', help='gan or vae.')
+    parser.add_argument('--class', type=str, default='airplane', help='airplane, car, chair, lamp or table.')
+    parser.add_argument('--pretrained_vae', type=str, default='', help='vae checkpoint directory.')
+    parser.add_argument('--data_directory', type=str, default='data/shapenet', help='shapenet dataset directory.')
+    parser.add_argument('--batch', type=int, default=200, help='positive integer')
+    parser.add_argument('--lr', type=float, default=0.0005, help='learning rate ex. 0.001, 0.0005')
+    parser.add_argument('--lr_decay', type=float, default=0.999, help='learning rate decay ex. 0.099, 0.0095')
+    parser.add_argument('--epochs', type=int, default=2000, help='positive integer')
+    parser.add_argument('--n_workers', type=int, default=10, help='positive integer')
+    args = parser.parse_args()
+    main(args)

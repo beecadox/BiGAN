@@ -6,6 +6,15 @@ MODEL_PATH = "models"
 CHECKPOINT_PATH = os.path.join(MODEL_PATH, 'checkpoints')
 
 
+class Lambda(nn.Module):
+    def __init__(self, function):
+        super(Lambda, self).__init__()
+        self.function = function
+
+    def forward(self, x):
+        return self.function(x)
+
+
 def initialize_weights(m):
     classname = m.__class__.__name__
     if classname.find('Linear') != -1:

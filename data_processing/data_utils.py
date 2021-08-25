@@ -5,23 +5,29 @@ import transforms3d
 import random
 import math
 
+category_to_id = {
+    'airplane': '02691156',
+    'car': '02958343',
+    'chair': '03001627',
+    'table': '04379243',
+    'lamp': '03636649'
+}
 
-def pad_cloudN(P, Nin):
-    """ Pad or subsample 3D Point cloud to Nin number of points """
+
+def pad_cloudN(P, num_points=2048):
+    """ Pad or subsample 3D Point cloud to num_points number of points """
     N = P.shape[0]
     P = P[:].astype(np.float32)
 
     rs = np.random.random.__self__
     choice = np.arange(N)
-    if N > Nin:  # need to subsample
-        ii = rs.choice(N, Nin)
+    if N > num_points:  # need to subsample
+        ii = rs.choice(N, num_points)
         choice = ii
-    elif N < Nin:  # need to pad by duplication
-        ii = rs.choice(N, Nin - N)
+    elif N < num_points:  # need to pad by duplication
+        ii = rs.choice(N, num_points - N)
         choice = np.concatenate([range(N), ii])
-    P = P[choice, :]
-
-    return P
+    return P[choice, :]
 
 
 def augment_cloud(Ps, args):
@@ -55,7 +61,6 @@ def load_h5(path, verbose=False):
     f = h5py.File(path, 'r')
     cloud_data = np.array(f['data'])
     f.close()
-
     return cloud_data.astype(np.float64)
 
 

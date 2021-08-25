@@ -1,10 +1,12 @@
 import os
 import numpy as np
+
 import torch
 import torch.optim
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim import Adamax, lr_scheduler
+
 from utils.hausdorff import hausdorff
 from utils.emd import earth_mover_distance
 from nn_architecture.vae_architecture import VariationalAutoencoder
@@ -23,6 +25,7 @@ def set_requires_grad(nets, requires_grad=False):
         if net is not None:
             for param in net.parameters():
                 param.requires_grad = requires_grad
+
 
 class TrainingClock(object):
     def __init__(self):
@@ -49,6 +52,7 @@ class TrainingClock(object):
         self.epoch = clock_dict['epoch']
         self.minibatch = clock_dict['minibatch']
         self.step = clock_dict['step']
+
 
 # GAN Training Agent
 class GAN(object):
@@ -97,18 +101,18 @@ class GAN(object):
         return loss_dict
 
     def forward(self, data):
-        self.raw_pc = data['raw'].cuda()
-        self.real_pc = data['real'].cuda()
+        self.partial_pc = data['partial'].cuda()
+        self.gt_pc = data['gt'].cuda()
 
         with torch.no_grad():
-            self.raw_latent, = self.vaeE.encode(self.raw_pc)
-            self.real_latent, = self.vaeE.encode(self.real_pc)
+            self.raw_latent, = self.vaeE.encode(self.partial_pc)
+            self.real_latent, = self.vaeE.encode(self.gt_pc)
 
         self.z_random = torch.randn((self.raw_latent.size(0), self.z_dim)).cuda()
 
         self.fake_latent = self.Generator(self.raw_latent, self.z_random)
-        self.fake_pc = self.vaeD.decode(self.fake_latent)
-        self.z_rec, z_mean, z_logvar = self.vaeE(self.fake_pc)
+        self.predicted_pc = self.vaeD.decode(self.fake_latent)
+        self.z_rec, z_mean, z_logvar = self.vaeE(self.predicted_pc)
 
     def update_D(self):
         set_requires_grad(self.Discriminator, True)
@@ -140,7 +144,7 @@ class GAN(object):
         self.loss_z_L1 = self.criterionL1(self.z_rec, self.z_random) * self.z_L1_weights
 
         # 3. partial scan reconstruction
-        self.loss_partial_rec = hausdorff(self.raw_pc, self.fake_pc) * self.partial_rec_weights
+        self.loss_partial_rec = hausdorff(self.partial_pc, self.predicted_pc) * self.partial_rec_weights
 
         self.loss_EG = self.loss_G_GAN + self.loss_z_L1 + self.loss_partial_rec
         self.loss_EG.backward()
@@ -148,12 +152,12 @@ class GAN(object):
 
     def get_point_cloud(self):
         """get real/fake/raw point cloud of current batch"""
-        real_pts = self.real_pc.transpose(1, 2).detach().cpu().numpy()
-        fake_pts = self.fake_pc.transpose(1, 2).detach().cpu().numpy()
-        raw_pts = self.raw_pc.transpose(1, 2).detach().cpu().numpy()
-        return real_pts, fake_pts, raw_pts
+        gt_pts = self.gt_pc.transpose(1, 2).detach().cpu().numpy()
+        predicted_pts = self.predicted_pc.transpose(1, 2).detach().cpu().numpy()
+        partial_pts = self.partial_pc.transpose(1, 2).detach().cpu().numpy()
+        return gt_pts, predicted_pts, partial_pts
 
-    def train_model(self, data, mode='train'):
+    def train(self, data, mode='train'):
         """one step of training"""
         self.forward(data)
         self.update_G_and_E()
@@ -166,7 +170,7 @@ class GAN(object):
         for k, v in losses_values.items():
             tb.add_scalar(k, v, self.training_clock.step)
 
-    def val_func(self, data):
+    def validation(self, data):
         """one step of validation"""
         with torch.no_grad():
             self.forward(data)
@@ -177,43 +181,44 @@ class GAN(object):
         self.Discriminator.eval()
         self.vaeE.eval()
 
+
     def save_checkpoints(self, name=None):
         """save checkpoint during training for future restore"""
         if name is None:
-            save_path = os.path.join(self.model_dir, "ckpt_epoch{}.pth".format(self.training_clock.epoch))
+            save_path = os.path.join(self.model_dir, "checkpoint_epoch{}.pth".format(self.training_clock.epoch))
             print("Saving checkpoint epoch {}...".format(self.training_clock.epoch))
         else:
             save_path = os.path.join(self.model_dir, "{}.pth".format(name))
 
         torch.save({
             'clock': self.training_clock.make_checkpoint(),
-            'netG_state_dict': self.Generator.cpu().state_dict(),
-            'netD_state_dict': self.Discriminator.cpu().state_dict(),
-            'netE_state_dict': self.vaeE.cpu().state_dict(),
-            'optimizerG_state_dict': self.Generator_optimizer.state_dict(),
-            'optimizerD_state_dict': self.Discriminator_optimizer.state_dict(),
-            'optimizerE_state_dict': self.Encoder_optimizer.state_dict(),
+            'Generator_state_dict': self.Generator.cpu().state_dict(),
+            'Discriminator_state_dict': self.Discriminator.cpu().state_dict(),
+            'Encoder_state_dict': self.vaeE.cpu().state_dict(),
+            'optimizer_Generator_state_dict': self.Generator_optimizer.state_dict(),
+            'optimizer_Discriminator_state_dict': self.Discriminator_optimizer.state_dict(),
+            'optimizer_Encoder_state_dict': self.Encoder_optimizer.state_dict(),
         }, save_path)
 
         self.Generator.cuda()
         self.Discriminator.cuda()
         self.vaeE.cuda()
 
-    def load_ckpt(self, name=None):
-        """load checkpoint from saved checkpoint"""
-        name = name if name == 'latest' else "ckpt_epoch{}".format(name)
+    def load_checkpoints(self, name=None):
+
+        name = name if name == 'latest' else "checkpoint_epoch{}".format(name)
         load_path = os.path.join(self.model_dir, "{}.pth".format(name))
         if not os.path.exists(load_path):
             raise ValueError("Checkpoint {} not exists.".format(load_path))
 
         checkpoint = torch.load(load_path)
         print("Loading checkpoint from {} ...".format(load_path))
-        self.Generator.load_state_dict(checkpoint['netG_state_dict'])
-        self.Discriminator.load_state_dict(checkpoint['netD_state_dict'])
-        self.vaeE.load_state_dict(checkpoint['netE_state_dict'])
-        self.Generator_optimizer.load_state_dict(checkpoint['optimizerG_state_dict'])
-        self.Discriminator_optimizer.load_state_dict(checkpoint['optimizerD_state_dict'])
-        self.Encoder_optimizer.load_state_dict(checkpoint['optimizerE_state_dict'])
+        self.Generator.load_state_dict(checkpoint['Generator_state_dict'])
+        self.Discriminator.load_state_dict(checkpoint['Discriminator_state_dict'])
+        self.vaeE.load_state_dict(checkpoint['Encoder_state_dict'])
+        self.Generator_optimizer.load_state_dict(checkpoint['optimizer_Generator_state_dict'])
+        self.Discriminator_optimizer.load_state_dict(checkpoint['optimizer_Discriminator_state_dict'])
+        self.Encoder_optimizer.load_state_dict(checkpoint['optimizer_Encoder_state_dict'])
         self.training_clock.restore_checkpoint(checkpoint['clock'])
 
     def visualize_batch(self, data, mode, **kwargs):
@@ -221,15 +226,15 @@ class GAN(object):
 
         num = 2
 
-        real_pts = data['real'][:num].transpose(1, 2).detach().cpu().numpy()
-        fake_pts = self.fake_pc[:num].transpose(1, 2).detach().cpu().numpy()
-        raw_pts = self.raw_pc[:num].transpose(1, 2).detach().cpu().numpy()
+        gt_pts = data['gt'][:num].transpose(1, 2).detach().cpu().numpy()
+        predicted_pts = self.predicted_pc[:num].transpose(1, 2).detach().cpu().numpy()
+        partial_pts = self.partial_pc[:num].transpose(1, 2).detach().cpu().numpy()
 
-        fake_pts = np.clip(fake_pts, -0.999, 0.999)
+        predicted_pts = torch.Tensor(np.clip(predicted_pts, -0.999, 0.999))
 
-        tb.add_mesh("real", vertices=real_pts, global_step=self.training_clock.step)
-        tb.add_mesh("fake", vertices=fake_pts, global_step=self.training_clock.step)
-        tb.add_mesh("input", vertices=raw_pts, global_step=self.training_clock.step)
+        tb.add_mesh("ground_truth", vertices=gt_pts, global_step=self.training_clock.step)
+        tb.add_mesh("completion", vertices=predicted_pts, global_step=self.training_clock.step)
+        tb.add_mesh("input", vertices=partial_pts, global_step=self.training_clock.step)
 
 
 # VAE Training Agent
@@ -255,7 +260,6 @@ class VAE(object):
         self.base_lr = config.lr
         self.optimizer = Adamax(self.vae.parameters(), config["lr"])
 
-        # set lr scheduler
         self.scheduler = lr_scheduler.ExponentialLR(self.optimizer, config['lr_decay'])
 
         # set tensorboard writer
@@ -275,7 +279,7 @@ class VAE(object):
     def save_checkpoint(self, name=None):
         """save checkpoint during training for future restore"""
         if name is None:
-            save_path = os.path.join(self.model_dir, "ckpt_epoch{}.pth".format(self.training_clock.epoch))
+            save_path = os.path.join(self.model_dir, "checkpoint_epoch{}.pth".format(self.training_clock.epoch))
             print("Saving checkpoint epoch {}...".format(self.training_clock.epoch))
         else:
             save_path = os.path.join(self.model_dir, "{}.pth".format(name))
@@ -296,7 +300,7 @@ class VAE(object):
 
     def load_checkpoint(self, name=None):
         """load checkpoint from saved checkpoint"""
-        name = name if name == 'latest' else "ckpt_epoch{}".format(name)
+        name = name if name == 'latest' else "checkpoint_epoch{}".format(name)
         load_path = os.path.join(self.model_dir, "{}.pth".format(name))
         if not os.path.exists(load_path):
             raise ValueError("Checkpoint {} not exists.".format(load_path))
@@ -334,7 +338,7 @@ class VAE(object):
         for k, v in losses_values.items():
             tb.add_scalar(k, v, self.training_clock.step)
 
-    def train_model(self, data):
+    def train(self, data):
         """one step of training"""
         self.vae.train()
 
@@ -347,7 +351,7 @@ class VAE(object):
         loss.backward()
         self.record_losses(losses, 'train')
 
-    def val_model(self, data):
+    def validation(self, data):
         """one step of validation"""
         self.vae.eval()
 

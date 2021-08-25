@@ -1,14 +1,10 @@
 import argparse
 import os
-import sys
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(__file__))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from process import DataProcess, get_while_running, kill_data_processes
-from data_utils import load_h5, load_csv, augment_cloud, pad_cloudN
-from visualization import plot_pcds
+from data_processing.process import DataProcess, get_while_running, kill_data_processes
+from data_processing.data_utils import load_h5, load_csv, augment_cloud, pad_cloudN
+from data_processing.visualization import plot_pcds
 
 
 class ShapenetDataProcess(DataProcess):
@@ -40,12 +36,12 @@ class ShapenetDataProcess(DataProcess):
         if train:
             gtpts, partial = augment_cloud([gtpts, partial], args)
         partial = pad_cloudN(partial, args.inpts)
-        return partial, gtpts
+        return {'partial': partial, 'gt': gtpts}
 
     def load_data(self, fname):
         pair = self.get_pair(self.args, fname, train=self.split == 'train')
-        partial = pair[0].T
-        target = pair[1]
+        partial = pair['partial'].T
+        target = pair['gt']
         cloud_meta = ['{}.{:d}'.format('/'.join(fname.split('/')[-2:]), 0), ]
 
         return target[np.newaxis, ...], cloud_meta, partial[np.newaxis, ...]
@@ -59,35 +55,5 @@ class ShapenetDataProcess(DataProcess):
         return targets, (clouds_meta, clouds)
 
 
-def test_process():
-    from multiprocessing import Queue
-    parser = argparse.ArgumentParser(description='')
-    args = parser.parse_args()
-    args.dataset = 'shapenet'
-    args.nworkers = 1
-    args.batch_size = 1
-    args.pc_augm_scale = 0
-    args.pc_augm_rot = 0
-    args.pc_augm_mirror_prob = 0
-    args.pc_augm_jitter = 0
-    args.inpts = 2048
-    data_processes = []
-    data_queue = Queue(1)
-    for i in range(args.nworkers):
-        data_processes.append(ShapenetDataProcess(data_queue, args, split='test',
-                                                  repeat=False))
-        data_processes[-1].start()
-
-    for targets, clouds_data in get_while_running(data_processes, data_queue, 0.5):
-        inp = clouds_data[1][0].squeeze().T
-        targets = targets[0]
-        print(clouds_data[0][0])
-        plot_pcds(None, [inp.squeeze(), targets.squeeze()], ['partial', 'gt'], use_color=[0, 0], color=[None, None], suptitle=clouds_data[0][0])
-
-    kill_data_processes(data_queue, data_processes)
-
-
 if __name__ == '__main__':
-    # python data_processing/shapenet.py
-    test_process()
-
+    pass

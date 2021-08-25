@@ -92,11 +92,11 @@ class DataProcess(Process):
             if iteration % self.gc_freq == 0:
                 gc.collect()
 
-    def load_datum(self, path):
-        pass
-
-    def load_label(self, path):
-        pass
+    # def load_datum(self, path):
+    #     pass
+    #
+    # def load_label(self, path):
+    #     pass
 
 
 def get_while_running(data_processes, data_queue, sleep_time=0):
@@ -120,7 +120,7 @@ def get_while_running(data_processes, data_queue, sleep_time=0):
 
 
 def kill_data_processes(queue, processes):
-    print('Signal processes')
+    print('Terminate Data Processes')
     for p in processes:
         p.shutdown()
 
@@ -133,28 +133,3 @@ def kill_data_processes(queue, processes):
 
     for p in processes:
         p.terminate()
-
-def test_process():
-    from multiprocessing import Queue
-
-    data_queue = Queue(5)
-    data_processes = []
-    for i in range(5):
-        data_processes.append(DataProcess(data_queue, train=True))
-        data_processes[-1].start()
-
-    count = 0
-    data_paths = data_processes[-1].data_paths
-    for data_dict in get_while_running(data_processes, data_queue, 0.5):
-        for data_ind in range(len(data_dict[list(data_dict.keys())[0]])):
-            print(data_paths[count], count)
-            for k, v in data_dict.items():
-                print(k, v.shape, v.dtype)
-            count += 1
-
-    print(count, len(data_paths))
-    kill_data_processes(data_queue, data_processes)
-
-
-if __name__ == '__main__':
-    test_process()

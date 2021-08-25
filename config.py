@@ -35,6 +35,10 @@ def configuration(args, phase):
         "kl_vae_weights": 10.0,
         "z_L1_weights": 7.5,
         "partial_rec_weights": 6,
+        "pc_augm_scale": 0,
+        "pc_augm_rot": 1,
+        "pc_augm_mirror_prob": 0.5,
+        "pc_augm_jitter": 0
     }
     if phase == "test":
         config["num_samples"] = 10
@@ -63,3 +67,12 @@ if __name__ == '__main__':
     addpath(path.join(project_folder, 'utils/emd'))
     addpath(path.join(project_folder, 'utils/chamfer'))
     pass
+
+config = {
+        "z_L1_weights": 7.5,
+        "partial_rec_weights": 6,
+        "pc_augm_scale": 0,
+        "pc_augm_rot": 1,
+        "pc_augm_mirror_prob": 0.5,
+        "pc_augm_jitter": 0}
+

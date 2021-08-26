@@ -1,6 +1,6 @@
 import argparse
 from config import configuration
-from nn_architecture.agents import GAN
+from nn_architecture.agents import GAN, VAE
 from data_processing.shapenet import get_data
 from utils.utils import cycle
 
@@ -14,33 +14,43 @@ def get_point_clouds(config):
 
 def main(args):
     config = configuration(args, "train")
-    gan_train_agent = GAN(config)
+    if config['model'] == 'gan':
+        print("Loading GAN...")
+        training_agent = GAN(config)
+    elif config['model'] == 'vae':
+        print("Loading VAE...")
+        training_agent = VAE(config)
+    else:
+        print("Wrong model parameter...Loading default model..")
+        training_agent = GAN(config)
     if config['continue_training']:
-        gan_train_agent.load_checkpoints(config['checkpoint'])
+        training_agent.load_checkpoints(config['checkpoint'])
     train_dataset, val_dataset = get_point_clouds(config)
-    clock = gan_train_agent.training_clock
+    clock = training_agent.training_clock
     for e in range(clock.epoch, config['epochs']):
         for b, data in enumerate(train_dataset):
-            gan_train_agent.train(data)
+            training_agent.train(data)
             if config.vis and clock.step % config.vis_frequency == 0:
-                gan_train_agent.visualize_batch(data, "train")
-                losses = gan_train_agent.collect_loss()
-
+                training_agent.visualize_batch(data, "train")
+                losses = training_agent.collect_loss()
+                with open("results/train_loses.txt", 'a+', newline='') as write_obj:
+                    write_obj.write(losses['D_GAN'] + '\t' + losses['G_GAN'] + '\t' + losses['z_L1'] + '\t' +
+                                    losses['partial_rec'] + '\t' + losses['emd_loss'])
                 # validation step
                 if clock.step % config['val_frequency'] == 0:
                     data = next(val_dataset)
-                    gan_train_agent.validation(data)
+                    training_agent.validation(data)
 
                     if config.vis and clock.step % config.vis_frequency == 0:
-                        gan_train_agent.visualize_batch(data, "validation")
+                        training_agent.visualize_batch(data, "validation")
 
                 clock.tick()
 
             clock.tock()
 
             if clock.epoch % config.save_frequency == 0:
-                gan_train_agent.save_checkpoints()
-            gan_train_agent.save_checkpoints('latest')
+                training_agent.save_checkpoints()
+            training_agent.save_checkpoints('latest')
 
 
 if __name__ == '__main__':

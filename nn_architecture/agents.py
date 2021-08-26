@@ -97,7 +97,8 @@ class GAN(object):
         loss_dict = {"D_GAN": self.loss_D,
                      "G_GAN": self.loss_G_GAN,
                      "z_L1": self.loss_z_L1,
-                     "partial_rec": self.loss_partial_rec}
+                     "partial_rec": self.loss_partial_rec,
+                     "emd_loss": self.emd_loss}
         return loss_dict
 
     def forward(self, data):
@@ -144,11 +145,15 @@ class GAN(object):
         self.loss_z_L1 = self.criterionL1(self.z_rec, self.z_random) * self.z_L1_weights
 
         # 3. partial scan reconstruction
+
         self.loss_partial_rec = hausdorff(self.partial_pc, self.predicted_pc) * self.partial_rec_weights
+
+        self.emd_loss = torch.mean(earth_mover_distance(self.predicted_pc, self.gt_pc))
 
         self.loss_EG = self.loss_G_GAN + self.loss_z_L1 + self.loss_partial_rec
         self.loss_EG.backward()
         self.Generator_optimizer.step()
+
 
     def get_point_cloud(self):
         """get real/fake/raw point cloud of current batch"""
@@ -276,7 +281,7 @@ class VAE(object):
 
         self.kl_loss = -0.5 * torch.mean(1 + log_variance - mean ** 2 - torch.exp(log_variance)) * self.weight_kl_vae
 
-    def save_checkpoint(self, name=None):
+    def save_checkpoints(self, name=None):
         """save checkpoint during training for future restore"""
         if name is None:
             save_path = os.path.join(self.model_dir, "checkpoint_epoch{}.pth".format(self.training_clock.epoch))
@@ -298,7 +303,7 @@ class VAE(object):
 
         self.vae.cuda()
 
-    def load_checkpoint(self, name=None):
+    def load_checkpoints(self, name=None):
         """load checkpoint from saved checkpoint"""
         name = name if name == 'latest' else "checkpoint_epoch{}".format(name)
         load_path = os.path.join(self.model_dir, "{}.pth".format(name))

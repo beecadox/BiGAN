@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 python train.py --proj_dir proj_log \
-                --exp_name shapenet-chair \
+                --exp_name shapenet-airplane \
                 --module bigan \
                 --dataset_name shapenet \
-                --category Chair \
+                --category Airplane \
                 --data_root /data/shapenet/train \
                 --batch_size 200 \
                 --lr 5e-4 \

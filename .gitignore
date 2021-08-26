@@ -3,3 +3,6 @@
 /data_plots
 /models
 /__pycache__
+/PyTorchEMD
+/results
+/proj_log

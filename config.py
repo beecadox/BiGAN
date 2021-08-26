@@ -19,12 +19,9 @@ def configuration(args, phase):
         "data_partial_train": os.path.join(args.data_directory, "train", "partial"),
         "data_complete_val": os.path.join(args.data_directory, "val", "gt"),
         "data_partial_val": os.path.join(args.data_directory, "val", "partial"),
-        "batch_size": args.batch,
         "workers": 8,
         "points": 2048,
-        "pretrain_vae_path": "models/vae",
-        "epochs": args.epochs,
-        "lr": args.lr,
+        "pretrain_vae_path": "models/vae/",
         "lr_decay": 0.9995,
         "continue_training": False,
         "checkpoint": 'latest',
@@ -41,7 +38,12 @@ def configuration(args, phase):
         "pc_augm_jitter": 0
     }
     if phase == "test":
-        config["num_samples"] = 10
+        config["num_samples"] = 10,
+        config["outpus"] = 2
+    if phase == "train":
+        config["epochs"] = args.epochs
+        config["lr"] = args.lr
+        config["batch_size"] = args.batch
 
     if config["gpus"] is not None:
         os.environ["CUDA_VISIBLE_DEVICES"] = config['gpus']
@@ -51,28 +53,3 @@ def configuration(args, phase):
             json.dump(args.__dict__, f, indent=2)
 
     return config
-
-
-def addpath(path):
-    sys.path.insert(0, path)
-
-
-if __name__ == '__main__':
-    project_folder = os.getcwd()
-    addpath(project_folder)
-    addpath(path.join(project_folder, 'utils'))
-    addpath(path.join(project_folder, 'models'))
-    addpath(path.join(project_folder, '../shared/'))
-    addpath(path.join(project_folder, '../shared/datasets'))
-    addpath(path.join(project_folder, 'utils/emd'))
-    addpath(path.join(project_folder, 'utils/chamfer'))
-    pass
-
-config = {
-        "z_L1_weights": 7.5,
-        "partial_rec_weights": 6,
-        "pc_augm_scale": 0,
-        "pc_augm_rot": 1,
-        "pc_augm_mirror_prob": 0.5,
-        "pc_augm_jitter": 0}
-

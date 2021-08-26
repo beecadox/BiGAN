@@ -1,59 +1,78 @@
-import argparse
+from torch.utils.data import Dataset, DataLoader
 import os
-import numpy as np
+import trimesh
+from data_processing.data_utils import augment_cloud, load_h5, pad_cloudN
+import torch
+import random
 
-from data_processing.process import DataProcess, get_while_running, kill_data_processes
-from data_processing.data_utils import load_h5, load_csv, augment_cloud, pad_cloudN
-from data_processing.visualization import plot_pcds
-
-
-class ShapenetDataProcess(DataProcess):
-
-    def __init__(self, data_queue, args, split='test', repeat=True):
-        """Shapenet dataloader.
-        Args:
-            data_queue: multiprocessing queue where data is stored at.
-            split: str in ('train', 'val', 'test'). Loads corresponding dataset.
-            repeat: repeats epoch if true. Terminates after one epoch otherwise.
-        """
-        self.args = args
-        self.split = split
-        args.DATA_PATH = '../data/%s' % (args.dataset)
-        classmap = load_csv(args.DATA_PATH + '/synsetoffset2category.txt')
-        args.classmap = {}
-        for i in range(classmap.shape[0]):
-            args.classmap[str(classmap[i][1]).zfill(8)] = classmap[i][0]
-
-        self.data_paths = sorted([os.path.join(args.DATA_PATH, split, 'partial', k.rstrip() + '.h5') for k in
-                                  open(args.DATA_PATH + '/%s.list' % (split)).readlines()])
-        N = int(len(self.data_paths) / args.batch_size) * args.batch_size
-        self.data_paths = self.data_paths[0:N]
-        super().__init__(data_queue, self.data_paths, None, args.batch_size, repeat=repeat)
-
-    def get_pair(self, args, fname, train):
-        partial = load_h5(fname)
-        gtpts = load_h5(fname.replace('partial', 'gt'))
-        if train:
-            gtpts, partial = augment_cloud([gtpts, partial], args)
-        partial = pad_cloudN(partial, args.inpts)
-        return {'partial': partial, 'gt': gtpts}
-
-    def load_data(self, fname):
-        pair = self.get_pair(self.args, fname, train=self.split == 'train')
-        partial = pair['partial'].T
-        target = pair['gt']
-        cloud_meta = ['{}.{:d}'.format('/'.join(fname.split('/')[-2:]), 0), ]
-
-        return target[np.newaxis, ...], cloud_meta, partial[np.newaxis, ...]
-
-    def collate(self, batch):
-        targets, clouds_meta, clouds = list(zip(*batch))
-        targets = np.concatenate(targets, 0)
-        if len(clouds_meta[0]) > 0:
-            clouds = np.concatenate(clouds, 0)
-            clouds_meta = [item for sublist in clouds_meta for item in sublist]
-        return targets, (clouds_meta, clouds)
+category_to_id = {
+    'airplane': '02691156',
+    'car': '02958343',
+    'chair': '03001627',
+    'table': '04379243',
+    'lamp': '03636649'
+}
 
 
-if __name__ == '__main__':
-    pass
+def get_data(phase, config):
+    augm_args = {x: config[x] for x in ['pc_augm_scale', 'pc_augm_rot', 'pc_augm_mirror_prob', 'pc_augm_jitter']}
+    if config['model'] in ['gan', 'vae']:
+        dataset = Shapenet(config['model'], phase, config['data_complete_', phase], config['category'],
+                           config['points'], augm_args)
+    else:
+        raise ValueError
+    dataloader = DataLoader(dataset, batch_size=config['batch_size'], shuffle=phase == 'train',
+                            num_workers=config['workers'])
+    return dataloader
+
+
+class Shapenet(Dataset):
+    def __init__(self, model, phase, data_root, category, n_pts, augment_config):
+        super(Shapenet, self).__init__()
+        self.model = model
+        self.phase = phase
+        self.augment = phase == "train"
+        self.augment_config = augment_config
+        self.category_id = category_to_id[category]
+
+        if self.model == "gan":
+            self.gt_data_paths = sorted([os.path.join(data_root, self.phase, 'gt', path.rstrip() + '.h5') for path in
+                                         open(data_root + '/%s.list' % self.phase).readlines() if
+                                         path.split("/")[0] == self.category_id])
+            self.partial_data_paths = list(map(lambda x: x.replace("gt", "partial"),
+                                               self.gt_data_paths))  # replace all 'ground truth' paths with the equivalent 'partial' paths
+
+        if self.model == "vae":
+            self.gt_data_paths = sorted([os.path.join(data_root, 'vae', path.rstrip() + '.ply') for path in
+                                         open(data_root + '/%s.list' % self.phase).readlines() if
+                                         path.split("/")[0] == self.category_id])
+
+        self.category_shapes = list(
+            map(lambda x: x.split("/")[-1], self.gt_data_paths))  # get only the ids for each path
+
+        self.n_pts = n_pts
+
+    def __getitem__(self, index):
+        pc_shape_name = self.category_shapes[index]
+
+        if self.model == "gan":
+            gtpts = load_h5(self.gt_data_paths[index])
+            partial = load_h5(self.partial_data_paths[index])
+            if self.augment:
+                gtpts, partial = augment_cloud([gtpts, partial], self.augment_config)
+            partial = pad_cloudN(partial, self.n_pts)
+
+            return {"gt": torch.tensor(gtpts, dtype=torch.float32).transpose(1, 0),
+                    "partial": torch.tensor(partial, dtype=torch.float32).transpose(1, 0), "shape_id": pc_shape_name}
+        else:
+            pc = trimesh.load(self.gt_data_paths[index])
+            p_idx = list(range(pc.shape[0]))
+            random.shuffle(p_idx)
+            p_idx = p_idx[:self.n_pts]
+
+            pc = pc[p_idx]
+            pc = torch.tensor(pc, dtype=torch.float32).transpose(1, 0)
+            return {"points": pc, "shape_id": pc_shape_name}
+
+    def __len__(self):
+        return len(self.category_shapes)

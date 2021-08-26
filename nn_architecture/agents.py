@@ -57,7 +57,7 @@ class TrainingClock(object):
 # GAN Training Agent
 class GAN(object):
     def __init__(self, config):
-        super(GAN, self).__init__(config)
+        super(GAN, self).__init__()
         self.log_dir = config['log_dir']
         self.model_dir = config['model_dir']
         self.training_clock = TrainingClock()
@@ -240,7 +240,7 @@ class GAN(object):
 # VAE Training Agent
 class VAE(object):
     def __init__(self, config):
-        super(VAE, self).__init__(config)
+        super(VAE, self).__init__()
         self.log_dir = config['log_dir']
         self.model_dir = config['model_dir']
         self.training_clock = TrainingClock()

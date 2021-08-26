@@ -1,34 +1,20 @@
 import argparse
 from config import configuration
-from nn_architecture.agents import GAN, VAE
-from data_processing.shapenet import ShapenetDataProcess
+from nn_architecture.agents import GAN
+from data_processing.shapenet import get_data
+from utils.utils import cycle
 
 
 def get_point_clouds(config):
-    from multiprocessing import Queue
-    parser = argparse.ArgumentParser(description='')
-    args = parser.parse_args()
-    args.dataset = 'shapenet'
-    args.nworkers = 1
-    args.batch_size = 1
-    args.pc_augm_scale = 0
-    args.pc_augm_rot = 0
-    args.pc_augm_mirror_prob = 0
-    args.pc_augm_jitter = 0
-    args.inpts = 2048
-    data_processes = []
-    data_queue = Queue(1)
-    for i in range(args.nworkers):
-        data_processes.append(ShapenetDataProcess(data_queue, args, split='test',
-                                                  repeat=False))
-        data_processes[-1].start()
-    return "train", "val"
+    train_dataloader = get_data("train", config)
+    val_dataloader = get_data("val", config)
+    val_dataloader = cycle(val_dataloader)
+    return train_dataloader, val_dataloader
 
 
 def main(args):
     config = configuration(args, "train")
     gan_train_agent = GAN(config)
-
     if config['continue_training']:
         gan_train_agent.load_checkpoints(config['checkpoint'])
     train_dataset, val_dataset = get_point_clouds(config)
@@ -60,9 +46,9 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Give model configuration arguments.')
     parser.add_argument('--proj_dir', type=str, default='proj_log', help='project directory')
-    parser.add_argument('--model', type=str, choices=['ae', 'vae', 'gan'], required=True, help='gan or vae.')
+    parser.add_argument('--model', type=str, choices=['vae', 'gan'],  default='gan', help='gan or vae.')
     parser.add_argument('-g', '--gpu_ids', type=str, default=None, help='positive integer')
-    parser.add_argument('--class_name', type=str, default='airplane', help='airplane, car, chair, lamp or table.')
+    parser.add_argument('--class_name', type=str, default='chair', help='airplane, car, chair, lamp or table.')
     parser.add_argument('--pretrained_vae', type=str, default='', help='vae checkpoint directory.')
     parser.add_argument('--data_directory', type=str, default='data/shapenet', help='shapenet dataset directory.')
     parser.add_argument('--batch', type=int, default=50, help='positive integer')

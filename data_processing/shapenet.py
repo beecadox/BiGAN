@@ -4,7 +4,7 @@ import trimesh
 from data_processing.data_utils import augment_cloud, load_h5, pad_cloudN
 import torch
 import random
-
+import numpy as np
 category_to_id = {
     'airplane': '02691156',
     'car': '02958343',
@@ -17,12 +17,12 @@ category_to_id = {
 def get_data(phase, config):
     augm_args = {x: config[x] for x in ['pc_augm_scale', 'pc_augm_rot', 'pc_augm_mirror_prob', 'pc_augm_jitter']}
     if config['model'] in ['gan', 'vae']:
-        dataset = Shapenet(config['model'], phase, config['data_complete_', phase], config['category'],
+        dataset = Shapenet(config['model'], phase, config['data_root_path'], config['category'],
                            config['points'], augm_args)
     else:
         raise ValueError
     dataloader = DataLoader(dataset, batch_size=config['batch_size'], shuffle=phase == 'train',
-                            num_workers=config['workers'])
+                            num_workers=config['workers'], worker_init_fn=np.random.seed())
     return dataloader
 
 

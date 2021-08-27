@@ -7,3 +7,4 @@ python train.py --proj_dir proj_log \
                 --batch 200 \
                 --lr 0.0005 \
                 --epochs 2000
+

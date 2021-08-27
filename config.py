@@ -15,10 +15,11 @@ def configuration(args, phase):
         "category": args.class_name,
         "log_dir": os.path.join(args.proj_dir, args.model, args.class_name, "log"),
         "model_dir": os.path.join(args.proj_dir, args.model, args.class_name, "models"),
-        "data_complete_train": os.path.join(args.data_directory, "train", "gt"),
-        "data_partial_train": os.path.join(args.data_directory, "train", "partial"),
-        "data_complete_val": os.path.join(args.data_directory, "val", "gt"),
-        "data_partial_val": os.path.join(args.data_directory, "val", "partial"),
+        "data_root_path": args.data_directory,
+        # "data_complete_train": os.path.join(args.data_directory, "train", "gt"),
+        # "data_partial_train": os.path.join(args.data_directory, "train", "partial"),
+        # "data_complete_val": os.path.join(args.data_directory, "val", "gt"),
+        # "data_partial_val": os.path.join(args.data_directory, "val", "partial"),
         "workers": 8,
         "points": 2048,
         "pretrain_vae_path": "models/vae/",
@@ -50,6 +51,6 @@ def configuration(args, phase):
 
     if config["training"]:
         with open(os.path.join(config["proj_dir"], config["model"], config["category"], 'config.txt'), 'w') as f:
-            json.dump(args.__dict__, f, indent=2)
+            json.dump(config, f, indent=2)
 
     return config

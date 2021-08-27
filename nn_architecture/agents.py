@@ -2,15 +2,19 @@ import os
 import numpy as np
 
 import torch
+
+torch.cuda.empty_cache()
 import torch.optim
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
-from torch.optim import Adamax, lr_scheduler
+from torch.optim import Adam, lr_scheduler
 
 from utils.hausdorff import hausdorff
 from utils.emd import earth_mover_distance
 from nn_architecture.vae_architecture import VariationalAutoencoder
 from nn_architecture.gan_architecture import Generator, Discriminator
+
+torch.autograd.set_detect_anomaly(True)
 
 
 def set_requires_grad(nets, requires_grad=False):
@@ -82,9 +86,9 @@ class GAN(object):
         self.criterionL1 = nn.L1Loss().cuda()
 
         # set optimizer
-        self.Generator_optimizer = Adamax(self.Generator.parameters(), lr=config["lr"])
-        self.Discriminator_optimizer = Adamax(self.Discriminator.parameters(), lr=config["lr"])
-        self.Encoder_optimizer = Adamax(self.vaeE.parameters(), lr=config["lr"])
+        self.Generator_optimizer = Adam(self.Generator.parameters(), lr=config["lr"])
+        self.Discriminator_optimizer = Adam(self.Discriminator.parameters(), lr=config["lr"])
+        self.Encoder_optimizer = Adam(self.vaeE.parameters(), lr=config["lr"])
 
         self.z_L1_weights = config["z_L1_weights"]
         self.partial_rec_weights = config["partial_rec_weights"]
@@ -154,7 +158,6 @@ class GAN(object):
         self.loss_EG.backward()
         self.Generator_optimizer.step()
 
-
     def get_point_cloud(self):
         """get real/fake/raw point cloud of current batch"""
         gt_pts = self.gt_pc.transpose(1, 2).detach().cpu().numpy()
@@ -162,7 +165,7 @@ class GAN(object):
         partial_pts = self.partial_pc.transpose(1, 2).detach().cpu().numpy()
         return gt_pts, predicted_pts, partial_pts
 
-    def train(self, data, mode='train'):
+    def training(self, data, mode='train'):
         """one step of training"""
         self.forward(data)
         self.update_G_and_E()
@@ -185,7 +188,6 @@ class GAN(object):
         self.Generator.eval()
         self.Discriminator.eval()
         self.vaeE.eval()
-
 
     def save_checkpoints(self, name=None):
         """save checkpoint during training for future restore"""
@@ -255,15 +257,15 @@ class VAE(object):
 
         # build network
         self.vae = VariationalAutoencoder().cuda()
-        print('-----pointVAE architecture-----')
-        print(self.vae)
+        # print('-----pointVAE architecture-----')
+        # print(self.vae)
 
         # set loss function
         self.criterion = nn.MSELoss().cuda()
 
         # set optimizer
-        self.base_lr = config.lr
-        self.optimizer = Adamax(self.vae.parameters(), config["lr"])
+        self.base_lr = config["lr"]
+        self.optimizer = Adam(self.vae.parameters(), config["lr"])
 
         self.scheduler = lr_scheduler.ExponentialLR(self.optimizer, config['lr_decay'])
 
@@ -273,7 +275,8 @@ class VAE(object):
 
     def forward(self, data):
         input_pts = data['points'].cuda()
-        target_pts = input_pts.clone().detach()
+
+        target_pts = input_pts.clone()
 
         self.output_pts, mean, log_variance = self.vae(input_pts)
 
@@ -286,6 +289,7 @@ class VAE(object):
         if name is None:
             save_path = os.path.join(self.model_dir, "checkpoint_epoch{}.pth".format(self.training_clock.epoch))
             print("Saving checkpoint epoch {}...".format(self.training_clock.epoch))
+            print(save_path)
         else:
             save_path = os.path.join(self.model_dir, "{}.pth".format(name))
 
@@ -343,7 +347,7 @@ class VAE(object):
         for k, v in losses_values.items():
             tb.add_scalar(k, v, self.training_clock.step)
 
-    def train(self, data):
+    def training(self, data):
         """one step of training"""
         self.vae.train()
 
@@ -351,9 +355,11 @@ class VAE(object):
 
         losses = self.collect_loss()
         self.optimizer.step()
-        loss = sum(losses.values())
         self.optimizer.zero_grad()
+        loss = sum(losses.values())
+
         loss.backward()
+
         self.record_losses(losses, 'train')
 
     def validation(self, data):

@@ -13,7 +13,7 @@ from utils.hausdorff import hausdorff
 from utils.emd import earth_mover_distance
 from nn_architecture.vae_architecture import VariationalAutoencoder
 from nn_architecture.gan_architecture import Generator, Discriminator
-
+from data_processing.visualization import plot_pcds
 torch.autograd.set_detect_anomaly(True)
 
 
@@ -110,8 +110,8 @@ class GAN(object):
         self.gt_pc = data['gt'].cuda()
 
         with torch.no_grad():
-            self.raw_latent, = self.vaeE.encode(self.partial_pc)
-            self.real_latent, = self.vaeE.encode(self.gt_pc)
+            self.raw_latent,_ ,_ = self.vaeE(self.partial_pc)
+            self.real_latent, _, _ = self.vaeE(self.gt_pc)
 
         self.z_random = torch.randn((self.raw_latent.size(0), self.z_dim)).cuda()
 
@@ -120,7 +120,7 @@ class GAN(object):
         self.z_rec, z_mean, z_logvar = self.vaeE(self.predicted_pc)
 
     def update_D(self):
-        set_requires_grad(self.Discriminator, True)
+        set_requires_grad(self.Discriminator, False)
 
         self.Discriminator_optimizer.zero_grad()
         # fake
@@ -257,6 +257,7 @@ class VAE(object):
 
         # build network
         self.vae = VariationalAutoencoder().cuda()
+        # set_requires_grad(self.vae, False)
         # print('-----pointVAE architecture-----')
         # print(self.vae)
 
@@ -276,8 +277,7 @@ class VAE(object):
     def forward(self, data):
         input_pts = data['points'].cuda()
 
-        target_pts = input_pts.clone()
-
+        target_pts = input_pts.detach().clone()
         self.output_pts, mean, log_variance = self.vae(input_pts)
 
         self.emd_loss = torch.mean(earth_mover_distance(self.output_pts, target_pts))
@@ -315,6 +315,7 @@ class VAE(object):
             raise ValueError("Checkpoint {} not exists.".format(load_path))
 
         checkpoint = torch.load(load_path)
+        print(checkpoint['clock'])
         print("Loading checkpoint from {} ...".format(load_path))
         if isinstance(self.vae, nn.DataParallel):
             self.vae.module.load_state_dict(checkpoint['model_state_dict'])
@@ -347,6 +348,13 @@ class VAE(object):
         for k, v in losses_values.items():
             tb.add_scalar(k, v, self.training_clock.step)
 
+    def update_network(self, loss_dict):
+        """update network by back propagation"""
+        loss = sum(loss_dict.values())
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
     def training(self, data):
         """one step of training"""
         self.vae.train()
@@ -354,12 +362,7 @@ class VAE(object):
         self.forward(data)
 
         losses = self.collect_loss()
-        self.optimizer.step()
-        self.optimizer.zero_grad()
-        loss = sum(losses.values())
-
-        loss.backward()
-
+        self.update_network(losses)
         self.record_losses(losses, 'train')
 
     def validation(self, data):
@@ -375,7 +378,7 @@ class VAE(object):
     def visualize_batch(self, data, mode, **kwargs):
         tb = self.train_writer if mode == 'train' else self.val_writer
 
-        num = 2
+        num = 3
 
         target_pts = data['points'][:num].transpose(1, 2).detach().cpu().numpy()
         outputs_pts = self.output_pts[:num].transpose(1, 2).detach().cpu().numpy()

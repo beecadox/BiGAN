@@ -26,6 +26,7 @@ def main(args):
     else:
         print("Wrong model parameter...Loading default model..")
         training_agent = GAN(config)
+
     if config['continue_training']:
         print("Continue training from checkpoint: ", config['checkpoint'])
         training_agent.load_checkpoints(config['checkpoint'])
@@ -33,8 +34,8 @@ def main(args):
     clock = training_agent.training_clock
     print("Training is starting.....")
     for e in range(clock.epoch, config['epochs']):
-        print("epoch -- ", e)
-        for b, data in tqdm(enumerate(train_dataset)):
+        print("epoch -- ", e, "\n")
+        for b, data in enumerate(train_dataset):
             training_agent.training(data)
             if config["visualization"] and clock.step % config["visualization_frequency"] == 0:
                 training_agent.visualize_batch(data, "train")
@@ -42,10 +43,13 @@ def main(args):
                 if config['model'] == 'vae':
                     with open("results/vae_train_loses.txt", 'a+', newline='') as write_obj:
                         write_obj.write(str(losses['emd'].item()) + '\t' + str(losses['kl'].item()) + "\n")
+                    print(str(losses['emd'].item()) + '\t' + str(losses['kl'].item()) + "\n")
                 else:
                     with open("results/gan_train_loses.txt", 'a+', newline='') as write_obj:
-                        write_obj.write(losses['D_GAN'] + '\t' + losses['G_GAN'] + '\t' + losses['z_L1'] + '\t' +
-                                        losses['partial_rec'] + '\t' + losses['emd_loss'] + "\n")
+                        write_obj.write(str(losses['D_GAN'].item()) + '\t' + str(losses['G_GAN'].item()) + '\t' + str(losses['z_L1'].item()) + '\t' +
+                                        str(losses['partial_rec'].item()) + '\t' + str(losses['emd_loss'].item()) + "\n")
+                        print(str(losses['D_GAN'].item()) + '\t' + str(losses['G_GAN'].item()) + '\t' + str(losses['z_L1'].item()) + '\t' +
+                                        str(losses['partial_rec'].item()) + '\t' + str(losses['emd_loss'].item()) + "\n")
                 # # validation step
                 if clock.step % config['validation_frequency'] == 0:
                     data = next(val_dataset)
@@ -61,7 +65,7 @@ def main(args):
             if clock.epoch % config['save_frequency'] == 0:
                 training_agent.save_checkpoints()
             training_agent.save_checkpoints('latest')
-    print("Finished training ", config['model'], "....")
+    print("Finished training ", str.upper(config['model']), "....")
 
 
 if __name__ == '__main__':

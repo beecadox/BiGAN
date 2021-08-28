@@ -16,9 +16,8 @@ class EncoderPointNet(nn.Module):
             conv_layer = nn.Conv1d(prev_nf, nf, kernel_size=1, stride=1)
             model.append(conv_layer)
 
-            if bn:
-                bn_layer = nn.BatchNorm1d(nf)
-                model.append(bn_layer)
+            bn_layer = nn.BatchNorm1d(nf)
+            model.append(bn_layer)
 
             act_layer = nn.LeakyReLU(inplace=True)
             model.append(act_layer)
@@ -57,17 +56,13 @@ class DecoderFC(nn.Module):
             fc_layer = nn.Linear(prev_nf, nf)
             model.append(fc_layer)
 
-            if bn:
-                bn_layer = nn.BatchNorm1d(nf)
-                model.append(bn_layer)
-            if idx != self.n_features.__len__() -1:
-                act_layer = nn.LeakyReLU(inplace=True)
-                model.append(act_layer)
+            bn_layer = nn.BatchNorm1d(nf)
+            model.append(bn_layer)
+            act_layer = nn.LeakyReLU(inplace=True)
+            model.append(act_layer)
             prev_nf = nf
 
         fc_layer = nn.Linear(self.n_features[-1], output_pts*3)
-        # act_layer = nn.LeakyReLU(inplace=False)
-        # model.append(act_layer)
         model.append(fc_layer)
 
         self.model = nn.Sequential(*model)
@@ -98,93 +93,6 @@ class VariationalAutoencoder(nn.Module):
         x = self.decoder(z)
         return x, mu, logvar
 
-
-# class VariationalAutoencoder(SavableModule):
-#     def __init__(self):
-#         super(VariationalAutoencoder, self).__init__(filename="vae-{:d}.to".format(128))
-#         self.encoder = EncoderVAE()
-#         self.decoder = DecoderVAE()
-#
-#     def encode(self, x):
-#         return self.encoder(x)
-#
-#     def decode(self, x):
-#         return self.decoder(x)
-#
-#     def forward(self, x):
-#         z, mean, log_variance = self.encoder(x)
-#         x = self.decoder(z)
-#         return x, mean, log_variance
-#
-#
-# class EncoderVAE(nn.Module):
-#     def __init__(self):
-#         super(EncoderVAE, self).__init__()
-#         self.latent_dim = 128
-#         self.z_dim = 64
-#         model = []
-#
-#         model.append(nn.Conv1d(3, 64, 1, 1))
-#         model.append(nn.BatchNorm1d(64))
-#         model.append(nn.LeakyReLU(0.2, True))
-#
-#         model.append(nn.Conv1d(64, 128, 1, 1))
-#         model.append(nn.BatchNorm1d(128))
-#         model.append(nn.LeakyReLU(0.2, True))
-#
-#         model.append(nn.Conv1d(128, 128, 1, 1))
-#         model.append(nn.BatchNorm1d(128))
-#         model.append(nn.LeakyReLU(0.2, True))
-#
-#         model.append(nn.Conv1d(128, 256, 1, 1))
-#         model.append(nn.BatchNorm1d(64))
-#         model.append(nn.LeakyReLU(0.2, True))
-#
-#         model.append(nn.Conv1d(256, 128, 1, 1))
-#         model.append(nn.BatchNorm1d(64))
-#         model.append(nn.LeakyReLU(0.2, True))
-#
-#         self.model = nn.Sequential(*model)
-#         self.fc_mean = nn.Linear(128, 64)
-#         self.fc_logvar = nn.Linear(128, 64)
-#
-#     def forward(self, x):
-#         x = torch.transpose(x, 0, 2)
-#         x = self.model(x)
-#         x = torch.max(x, 2)[0]
-#
-#         mean = self.fc_mean(x)
-#         log_variance = self.fc_logvar(x)
-#         var = torch.exp(log_variance / 2.)
-#         eps = torch.distributions.normal.Normal(0, 1).sample(mean.shape).to(x.device)
-#         z = mean + var * eps
-#         return z, mean, log_variance
-#
-#
-# class DecoderVAE(nn.Module):
-#     def __init__(self):
-#         super(DecoderVAE, self).__init__()
-#         model = []
-#
-#         model.append(nn.Linear(128, 256))
-#         model.append(nn.BatchNorm1d(256))
-#         model.append(nn.LeakyReLU(0.2, True))
-#
-#         model.append(nn.Linear(256, 256))
-#         model.append(nn.BatchNorm1d(256))
-#         model.append(nn.LeakyReLU(0.2, True))
-#
-#         model.append(nn.Linear(256, 6144))
-#
-#         self.model = nn.Sequential(*model)
-#         self.expand = nn.Linear(64, 128)
-#
-#     def forward(self, x):
-#         x = self.expand(x)
-#         x = self.model(x)
-#         x = x.view((-1, 3, 2048))
-#         return x
-#
 
 class VariationalAutoencoder3D(SavableModule):
     def __init__(self):

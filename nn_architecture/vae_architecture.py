@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
-from nn_architecture.common import SavableModule, Lambda
+from nn_architecture.common import Lambda
 
 
 class EncoderPointNet(nn.Module):
-    def __init__(self, n_filters=(64, 128, 128, 256), latent_dim=128, z_dim=64, bn=True):
+    def __init__(self, n_filters=(64, 128, 128, 256), latent_dim=128, z_dim=64):
         super(EncoderPointNet, self).__init__()
         self.n_filters = list(n_filters) + [latent_dim]
         self.latent_dim = latent_dim
@@ -19,7 +19,7 @@ class EncoderPointNet(nn.Module):
             bn_layer = nn.BatchNorm1d(nf)
             model.append(bn_layer)
 
-            act_layer = nn.LeakyReLU(inplace=True)
+            act_layer = nn.LeakyReLU(0.1, True)
             model.append(act_layer)
             prev_nf = nf
 
@@ -43,7 +43,7 @@ class EncoderPointNet(nn.Module):
 
 
 class DecoderFC(nn.Module):
-    def __init__(self, n_features=(256, 256), latent_dim=128, z_dim=64, output_pts=2048, bn=False):
+    def __init__(self, n_features=(256, 256), latent_dim=128, z_dim=64, output_pts=2048):
         super(DecoderFC, self).__init__()
         self.n_features = list(n_features)
         self.output_pts = output_pts
@@ -58,7 +58,7 @@ class DecoderFC(nn.Module):
 
             bn_layer = nn.BatchNorm1d(nf)
             model.append(bn_layer)
-            act_layer = nn.LeakyReLU(inplace=True)
+            act_layer = nn.LeakyReLU(0.1, True)
             model.append(act_layer)
             prev_nf = nf
 
@@ -94,9 +94,9 @@ class VariationalAutoencoder(nn.Module):
         return x, mu, logvar
 
 
-class VariationalAutoencoder3D(SavableModule):
+class VariationalAutoencoder3D():
     def __init__(self):
-        super(VariationalAutoencoder3D, self).__init__(filename="vae-{:d}.to".format(128))
+        super(VariationalAutoencoder3D, self).__init__()
         self.encoder = EncoderVAE3D()
         self.decoder = DecoderVAE3D()
 

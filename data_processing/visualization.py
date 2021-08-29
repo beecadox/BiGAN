@@ -35,15 +35,17 @@ def plot_pcds(filename, pcds, titles, use_color=[], color=None, suptitle='', siz
             ax.set_ylim(ylim)
             ax.set_zlim(zlim)
     plt.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.9, wspace=0.1, hspace=0.1)
-    plt.suptitle(id_to_category[suptitle.split("/")[0]] + "--" + suptitle.split("/")[1].split(".")[0])
-
-    if titles.__len__() == 3:
-        filename = "../data_plots/results/" + id_to_category[suptitle.split("/")[0]] + "--" + \
-                   suptitle.split("/")[1].split(".")[0] + ".jpg"
+    if filename == "vae":
+        filename = "/home/beecadox/Thesis/BiGAN/results/chair/images/epoch_" + suptitle + ".jpg"
     else:
-        filename = "../data_plots/" + \
-                   suptitle.replace(suptitle.split("/")[0], id_to_category[suptitle.split("/")[0]]).split(".")[
-                       0] + ".jpg"
+        plt.suptitle(id_to_category[suptitle.split("/")[0]] + "--" + suptitle.split("/")[1].split(".")[0])
+        if titles.__len__() == 3:
+            filename = "../data_plots/results/" + id_to_category[suptitle.split("/")[0]] + "--" + \
+                       suptitle.split("/")[1].split(".")[0] + ".jpg"
+        else:
+            filename = "../data_plots/" + \
+                       suptitle.replace(suptitle.split("/")[0], id_to_category[suptitle.split("/")[0]]).split(".")[
+                           0] + ".jpg"
     if filename is not None:
         fig.savefig(filename)
         plt.close(fig)

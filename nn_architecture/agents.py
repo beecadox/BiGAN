@@ -348,6 +348,14 @@ class VAE(object):
         for k, v in losses_values.items():
             tb.add_scalar(k, v, self.training_clock.step)
 
+    def get_point_cloud(self):
+        """get real/fake/raw point cloud of current batch"""
+        gt_pts = self.gt_pc.transpose(1, 2).detach().cpu().numpy()
+        predicted_pts = self.predicted_pc.transpose(1, 2).detach().cpu().numpy()
+        partial_pts = self.partial_pc.transpose(1, 2).detach().cpu().numpy()
+        return gt_pts, predicted_pts, partial_pts
+
+
     def update_network(self, loss_dict):
         """update network by back propagation"""
         loss = sum(loss_dict.values())
@@ -385,7 +393,11 @@ class VAE(object):
 
         tb.add_mesh("gt", vertices=target_pts, global_step=self.training_clock.step)
         tb.add_mesh("output", vertices=outputs_pts, global_step=self.training_clock.step)
-
+        plot_pcds(filename='vae', pcds=[target_pts[0], outputs_pts[0]], titles=["gt", "output"], use_color=[0, 0], color=[None, None], suptitle=str(str(self.training_clock.epoch) + "_0"))
+        plot_pcds(filename='vae', pcds=[target_pts[1], outputs_pts[1]], titles=["gt", "output"], use_color=[0, 0],
+                  color=[None, None], suptitle=str(self.training_clock.step) + "_1")
+        plot_pcds(filename='vae', pcds=[target_pts[2], outputs_pts[2]], titles=["gt", "output"], use_color=[0, 0],
+                  color=[None, None], suptitle=str(self.training_clock.step) + "_2")
         self.vae.eval()
         with torch.no_grad():
             gen_pts = self.random_sample(num)

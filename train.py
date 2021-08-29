@@ -41,7 +41,7 @@ def main(args):
                 training_agent.visualize_batch(data, "train")
                 losses = training_agent.collect_loss()
                 if config['model'] == 'vae':
-                    with open("results/vae_train_loses.txt", 'a+', newline='') as write_obj:
+                    with open("results/chair/vae_train_loses.txt", 'a+', newline='') as write_obj:
                         write_obj.write(str(losses['emd'].item()) + '\t' + str(losses['kl'].item()) + "\n")
                     print(str(losses['emd'].item()) + '\t' + str(losses['kl'].item()) + "\n")
                 else:

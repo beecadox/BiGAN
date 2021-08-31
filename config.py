@@ -18,8 +18,8 @@ def configuration(args, phase):
         "data_root_path": args.data_directory,
         "workers": 8,
         "points": 2048,
-        "pretrain_vae_path": "proj_log/vae/" + args.class_name + "/models/checkpoint_epoch5300.pth",
-        "lr_decay": 0.9995,
+        "pretrain_vae_path": "proj_log/vae/" + args.class_name + "/models/latest.pth",
+        "lr_decay": 0.9999,
         "continue_training": False,
         "checkpoint": 'latest',
         "visualization": True,
@@ -42,8 +42,8 @@ def configuration(args, phase):
         config["lr"] = args.lr
         config["batch_size"] = args.batch
 
-    if config["gpus"] is not None:
-        os.environ["CUDA_VISIBLE_DEVICES"] = config['gpus']
+    # if config["gpus"] is not None:
+    #     os.environ["CUDA_VISIBLE_DEVICES"] = config['gpus']
 
     if config["training"]:
         with open(os.path.join(config["proj_dir"], config["model"], config["category"], 'config.txt'), 'w') as f:

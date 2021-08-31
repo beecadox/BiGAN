@@ -33,7 +33,7 @@ def main(args):
 
     clock = training_agent.training_clock
     print("Training is starting.....")
-    for e in range(clock.epoch, config['epochs']):
+    for e in range(clock.epoch, clock.epoch + config['epochs']):
         print("epoch -- ", e, "\n")
         for b, data in enumerate(train_dataset):
             training_agent.training(data)

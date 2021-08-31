@@ -58,44 +58,58 @@ class TrainingClock(object):
         self.step = clock_dict['step']
 
 
-# GAN Training Agent
 class GAN(object):
     def __init__(self, config):
-        super(GAN, self).__init__()
-        self.log_dir = config['log_dir']
-        self.model_dir = config['model_dir']
+        self.log_dir = config["log_dir"]
+        self.model_dir = config["model_dir"]
         self.training_clock = TrainingClock()
-        self.batch_size = config['batch_size']
+        self.batch_size = config["batch_size"]
+
         self.z_dim = 64
+
+        # build network
+        self.build_net(config)
+
+        # set loss function
+        self.set_loss_function()
+
+        # set optimizer
+        self.set_optimizer(config)
+
+        # set tensorboard writer
+        self.train_tb = SummaryWriter(os.path.join(self.log_dir, 'train.events'))
+        self.val_tb = SummaryWriter(os.path.join(self.log_dir, 'val.events'))
+
+        self.weight_z_L1 = config["z_L1_weights"]
+        self.weight_partial_rec = config["partial_rec_weights"]
+
+    def build_net(self, config):
+
         # load pretrained pointVAE
-        vae = VariationalAutoencoder()
+        pointVAE = VariationalAutoencoder()
         try:
             vae_weights = torch.load(config["pretrain_vae_path"])['model_state_dict']
         except Exception as e:
             raise ValueError("Check the path for pretrained model of point VAE. \n{}".format(e))
-        vae.load_state_dict(vae_weights)
-        self.vaeE = vae.encoder.eval().cuda()
-        self.vaeD = vae.decoder.eval().cuda()
-        set_requires_grad(self.vaeE, False)
+        pointVAE.load_state_dict(vae_weights, strict=False)
+        self.netE = pointVAE.encoder.eval().cuda()
+        self.vaeD = pointVAE.decoder.eval().cuda()
+        set_requires_grad(self.netE, False)  # netE remains fixed
+        # print(self.netE)
+        # print("---------")
+        # print(self.vaeD)
+        # print("---------")
         # build G, D
-        self.Generator = Generator().cuda()
-        self.Discriminator = Discriminator().cuda()
+        self.netG = Generator(64, 64, (256, 512)).cuda()
+        # print(self.netG)
+        # print("---------")
+        self.netD = Discriminator(64).cuda()
+        # print(self.netD)
 
-        # set loss function
-        self.criterionGAN = nn.MSELoss().cuda()
-        self.criterionL1 = nn.L1Loss().cuda()
-
-        # set optimizer
-        self.Generator_optimizer = Adam(self.Generator.parameters(), lr=config["lr"])
-        self.Discriminator_optimizer = Adam(self.Discriminator.parameters(), lr=config["lr"])
-        self.Encoder_optimizer = Adam(self.vaeE.parameters(), lr=config["lr"])
-
-        self.z_L1_weights = config["z_L1_weights"]
-        self.partial_rec_weights = config["partial_rec_weights"]
-
-        # set tensorboard writer
-        self.train_writer = SummaryWriter(os.path.join(self.log_dir, 'train.events'))
-        self.val_writer = SummaryWriter(os.path.join(self.log_dir, 'val.events'))
+    def set_loss_function(self):
+        """set loss function used in training"""
+        self.criterionGAN = nn.MSELoss()  # LSGAN
+        self.criterionL1 = nn.L1Loss()
 
     def collect_loss(self):
         loss_dict = {"D_GAN": self.loss_D,
@@ -105,143 +119,177 @@ class GAN(object):
                      "emd_loss": self.emd_loss}
         return loss_dict
 
+    def set_optimizer(self, config):
+        """set optimizer and lr scheduler used in training"""
+        self.optimizer_G = torch.optim.Adam(self.netG.parameters(), lr=config["lr"], betas=(0.5, 0.999))
+        self.optimizer_D = torch.optim.Adam(self.netD.parameters(), lr=config["lr"], betas=(0.5, 0.999))
+        self.optimizer_E = torch.optim.Adam(self.netE.parameters(), lr=config["lr"], betas=(0.5, 0.999))
+
     def forward(self, data):
-        self.partial_pc = data['partial'].cuda()
-        self.gt_pc = data['gt'].cuda()
+        self.raw_pc = data['partial'].cuda()
+        self.real_pc = data['gt'].cuda()
 
         with torch.no_grad():
-            self.raw_latent,_ ,_ = self.vaeE(self.partial_pc)
-            self.real_latent, _, _ = self.vaeE(self.gt_pc)
+            self.raw_latent,_,_ = self.netE(self.raw_pc).cuda()
+            self.real_latent,_,_ = self.netE(self.real_pc).cuda()
 
-        self.z_random = torch.randn((self.raw_latent.size(0), self.z_dim)).cuda()
+        self.forward_GE()
 
-        self.fake_latent = self.Generator(self.raw_latent, self.z_random)
-        self.predicted_pc = self.vaeD.decode(self.fake_latent)
-        self.z_rec, z_mean, z_logvar = self.vaeE(self.predicted_pc)
+    def forward_GE(self):
+        self.z_random = self.get_random_noise(self.raw_latent.size(0))
+        self.fake_latent = self.netG(self.raw_latent, self.z_random)
+        self.fake_pc = self.vaeD(self.fake_latent)
+        self.z_rec, z_mu, z_logvar = self.netE(self.fake_pc)
 
-    def update_D(self):
-        set_requires_grad(self.Discriminator, False)
-
-        self.Discriminator_optimizer.zero_grad()
+    def backward_D(self):
         # fake
-        pred_fake = self.Discriminator(self.fake_latent.detach())
+        pred_fake = self.netD(self.fake_latent.detach())
         fake = torch.zeros_like(pred_fake).fill_(0.0).cuda()
         self.loss_D_fake = self.criterionGAN(pred_fake, fake)
 
         # real
-        pred_real = self.Discriminator(self.real_latent.detach())
+        pred_real = self.netD(self.real_latent.detach())
         real = torch.ones_like(pred_real).fill_(1.0).cuda()
         self.loss_D_real = self.criterionGAN(pred_real, real)
 
         self.loss_D = (self.loss_D_fake + self.loss_D_real) * 0.5
         self.loss_D.backward()
-        self.Discriminator_optimizer.step()
-
     def update_G_and_E(self):
-        set_requires_grad(self.Discriminator, False)
-        self.Generator_optimizer.zero_grad()
+        set_requires_grad(self.netD, False)
+        self.optimizer_G.zero_grad()
+        self.backward_EG()
+        self.optimizer_G.step()
+
+    def backward_EG(self):
         # 1. G(A) fool D
-        pred_fake = self.Discriminator(self.fake_latent)
+        pred_fake = self.netD(self.fake_latent)
         real = torch.ones_like(pred_fake).fill_(1.0).cuda()
         self.loss_G_GAN = self.criterionGAN(pred_fake, real)
 
         # 2. noise reconstruction |E(G(A, z)) - z_random|
-        self.loss_z_L1 = self.criterionL1(self.z_rec, self.z_random) * self.z_L1_weights
+        self.loss_z_L1 = self.criterionL1(self.z_rec, self.z_random) * self.weight_z_L1
 
         # 3. partial scan reconstruction
-
-        self.loss_partial_rec = hausdorff(self.partial_pc, self.predicted_pc) * self.partial_rec_weights
-
-        self.emd_loss = torch.mean(earth_mover_distance(self.predicted_pc, self.gt_pc))
-
+        self.loss_partial_rec = hausdorff(self.raw_pc, self.fake_pc) * self.weight_partial_rec
+        self.emd_loss = torch.mean(earth_mover_distance(self.real_pc, self.fake_pc))
         self.loss_EG = self.loss_G_GAN + self.loss_z_L1 + self.loss_partial_rec
         self.loss_EG.backward()
-        self.Generator_optimizer.step()
+
+    def update_D(self):
+        set_requires_grad(self.netD, True)
+
+        self.optimizer_D.zero_grad()
+        self.backward_D()
+        self.optimizer_D.step()
 
     def get_point_cloud(self):
         """get real/fake/raw point cloud of current batch"""
-        gt_pts = self.gt_pc.transpose(1, 2).detach().cpu().numpy()
-        predicted_pts = self.predicted_pc.transpose(1, 2).detach().cpu().numpy()
-        partial_pts = self.partial_pc.transpose(1, 2).detach().cpu().numpy()
-        return gt_pts, predicted_pts, partial_pts
+        real_pts = self.real_pc.transpose(1, 2).detach().cpu().numpy()
+        fake_pts = self.fake_pc.transpose(1, 2).detach().cpu().numpy()
+        raw_pts = self.raw_pc.transpose(1, 2).detach().cpu().numpy()
+        return real_pts, fake_pts, raw_pts
 
-    def training(self, data, mode='train'):
-        """one step of training"""
-        self.forward(data)
+    def optimize_network(self):
         self.update_G_and_E()
         self.update_D()
 
-        loss_dict = self.collect_loss()
-        losses_values = {k: v.item() for k, v in loss_dict.items()}
+    def training(self, data):
+        """one step of training"""
+        self.forward(data)
+        self.optimize_network()
 
-        tb = self.train_writer if mode == 'train' else self.val_writer
-        for k, v in losses_values.items():
-            tb.add_scalar(k, v, self.training_clock.step)
+        loss_dict = self.collect_loss()
+        self.record_losses(loss_dict, "train")
 
     def validation(self, data):
         """one step of validation"""
         with torch.no_grad():
             self.forward(data)
 
+    def update_learning_rate(self):
+        """record and update learning rate"""
+        pass
+
     def eval(self):
         """set G, D, E to eval mode"""
-        self.Generator.eval()
-        self.Discriminator.eval()
-        self.vaeE.eval()
+        self.netG.eval()
+        self.netD.eval()
+        self.netE.eval()
+
+    def get_random_noise(self, batch_size):
+        """sample random z from gaussian"""
+        z = torch.randn((batch_size, self.z_dim))
+        return z
 
     def save_checkpoints(self, name=None):
         """save checkpoint during training for future restore"""
         if name is None:
-            save_path = os.path.join(self.model_dir, "checkpoint_epoch{}.pth".format(self.training_clock.epoch))
+            save_path = os.path.join(self.model_dir, "ckpt_epoch{}.pth".format(self.training_clock.epoch))
             print("Saving checkpoint epoch {}...".format(self.training_clock.epoch))
         else:
             save_path = os.path.join(self.model_dir, "{}.pth".format(name))
 
         torch.save({
             'clock': self.training_clock.make_checkpoint(),
-            'Generator_state_dict': self.Generator.cpu().state_dict(),
-            'Discriminator_state_dict': self.Discriminator.cpu().state_dict(),
-            'Encoder_state_dict': self.vaeE.cpu().state_dict(),
-            'optimizer_Generator_state_dict': self.Generator_optimizer.state_dict(),
-            'optimizer_Discriminator_state_dict': self.Discriminator_optimizer.state_dict(),
-            'optimizer_Encoder_state_dict': self.Encoder_optimizer.state_dict(),
+            'netG_state_dict': self.netG.cpu().state_dict(),
+            'netD_state_dict': self.netD.cpu().state_dict(),
+            'netE_state_dict': self.netE.cpu().state_dict(),
+            'optimizerG_state_dict': self.optimizer_G.state_dict(),
+            'optimizerD_state_dict': self.optimizer_D.state_dict(),
+            'optimizerE_state_dict': self.optimizer_E.state_dict(),
         }, save_path)
 
-        self.Generator.cuda()
-        self.Discriminator.cuda()
-        self.vaeE.cuda()
+        self.netG.cuda()
+        self.netD.cuda()
+        self.netE.cuda()
 
     def load_checkpoints(self, name=None):
-
-        name = name if name == 'latest' else "checkpoint_epoch{}".format(name)
+        """load checkpoint from saved checkpoint"""
+        name = name if name == 'latest' else "ckpt_epoch{}".format(name)
         load_path = os.path.join(self.model_dir, "{}.pth".format(name))
         if not os.path.exists(load_path):
             raise ValueError("Checkpoint {} not exists.".format(load_path))
 
         checkpoint = torch.load(load_path)
         print("Loading checkpoint from {} ...".format(load_path))
-        self.Generator.load_state_dict(checkpoint['Generator_state_dict'])
-        self.Discriminator.load_state_dict(checkpoint['Discriminator_state_dict'])
-        self.vaeE.load_state_dict(checkpoint['Encoder_state_dict'])
-        self.Generator_optimizer.load_state_dict(checkpoint['optimizer_Generator_state_dict'])
-        self.Discriminator_optimizer.load_state_dict(checkpoint['optimizer_Discriminator_state_dict'])
-        self.Encoder_optimizer.load_state_dict(checkpoint['optimizer_Encoder_state_dict'])
+        self.netG.load_state_dict(checkpoint['netG_state_dict'])
+        self.netD.load_state_dict(checkpoint['netD_state_dict'])
+        self.netE.load_state_dict(checkpoint['netE_state_dict'])
+        self.optimizer_G.load_state_dict(checkpoint['optimizerG_state_dict'])
+        self.optimizer_D.load_state_dict(checkpoint['optimizerD_state_dict'])
+        self.optimizer_E.load_state_dict(checkpoint['optimizerE_state_dict'])
         self.training_clock.restore_checkpoint(checkpoint['clock'])
 
+    def record_losses(self, loss_dict, mode='train'):
+        """record loss to tensorboard"""
+        losses_values = {k: v.item() for k, v in loss_dict.items()}
+
+        tb = self.train_tb if mode == 'train' else self.val_tb
+        for k, v in losses_values.items():
+            tb.add_scalar(k, v, self.training_clock.step)
+
     def visualize_batch(self, data, mode, **kwargs):
-        tb = self.train_writer if mode == 'train' else self.val_writer
+        tb = self.train_tb if mode == 'train' else self.val_tb
 
-        num = 2
+        num = 3
 
-        gt_pts = data['gt'][:num].transpose(1, 2).detach().cpu().numpy()
-        predicted_pts = self.predicted_pc[:num].transpose(1, 2).detach().cpu().numpy()
-        partial_pts = self.partial_pc[:num].transpose(1, 2).detach().cpu().numpy()
+        real_pts = data['gt'][:num].transpose(1, 2).detach().cpu().numpy()
+        fake_pts = self.fake_pc[:num].transpose(1, 2).detach().cpu().numpy()
+        raw_pts = self.raw_pc[:num].transpose(1, 2).detach().cpu().numpy()
 
-        predicted_pts = torch.Tensor(np.clip(predicted_pts, -0.999, 0.999))
+        fake_pts = torch.from_numpy(np.clip(fake_pts, -0.999, 0.999))
 
-        tb.add_mesh("ground_truth", vertices=gt_pts, global_step=self.training_clock.step)
-        tb.add_mesh("completion", vertices=predicted_pts, global_step=self.training_clock.step)
-        tb.add_mesh("input", vertices=partial_pts, global_step=self.training_clock.step)
+        tb.add_mesh("real", vertices=real_pts, global_step=self.training_clock.step)
+        tb.add_mesh("fake", vertices=fake_pts, global_step=self.training_clock.step)
+        tb.add_mesh("input", vertices=raw_pts, global_step=self.training_clock.step)
+
+
+        plot_pcds(filename='gan', pcds=[real_pts[0], raw_pts[0], fake_pts[0]], titles=["gt", "partial", "completion"], use_color=[0, 0, 0],
+                  color=[None, None, None], suptitle=str(str(self.training_clock.epoch) + "_0"))
+        plot_pcds(filename='gan', pcds=[real_pts[1], raw_pts[1], fake_pts[1]], titles=["gt", "partial", "completion"], use_color=[0, 0],
+                  color=[None, None, None], suptitle=str(self.training_clock.step) + "_1")
+        plot_pcds(filename='gan', pcds=[real_pts[2], raw_pts[2], fake_pts[2]], titles=["gt", "partial", "completion"], use_color=[0, 0, 0],
+                  color=[None, None, None], suptitle=str(self.training_clock.step) + "_2")
 
 
 # VAE Training Agent
@@ -348,14 +396,6 @@ class VAE(object):
         for k, v in losses_values.items():
             tb.add_scalar(k, v, self.training_clock.step)
 
-    def get_point_cloud(self):
-        """get real/fake/raw point cloud of current batch"""
-        gt_pts = self.gt_pc.transpose(1, 2).detach().cpu().numpy()
-        predicted_pts = self.predicted_pc.transpose(1, 2).detach().cpu().numpy()
-        partial_pts = self.partial_pc.transpose(1, 2).detach().cpu().numpy()
-        return gt_pts, predicted_pts, partial_pts
-
-
     def update_network(self, loss_dict):
         """update network by back propagation"""
         loss = sum(loss_dict.values())
@@ -394,10 +434,8 @@ class VAE(object):
         tb.add_mesh("gt", vertices=target_pts, global_step=self.training_clock.step)
         tb.add_mesh("output", vertices=outputs_pts, global_step=self.training_clock.step)
         plot_pcds(filename='vae', pcds=[target_pts[0], outputs_pts[0]], titles=["gt", "output"], use_color=[0, 0], color=[None, None], suptitle=str(str(self.training_clock.epoch) + "_0"))
-        plot_pcds(filename='vae', pcds=[target_pts[1], outputs_pts[1]], titles=["gt", "output"], use_color=[0, 0],
-                  color=[None, None], suptitle=str(self.training_clock.step) + "_1")
-        plot_pcds(filename='vae', pcds=[target_pts[2], outputs_pts[2]], titles=["gt", "output"], use_color=[0, 0],
-                  color=[None, None], suptitle=str(self.training_clock.step) + "_2")
+        plot_pcds(filename='vae', pcds=[target_pts[1], outputs_pts[1]], titles=["gt", "output"], use_color=[0, 0], color=[None, None], suptitle=str(self.training_clock.step) + "_1")
+        plot_pcds(filename='vae', pcds=[target_pts[2], outputs_pts[2]], titles=["gt", "output"], use_color=[0, 0], color=[None, None], suptitle=str(self.training_clock.step) + "_2")
         self.vae.eval()
         with torch.no_grad():
             gen_pts = self.random_sample(num)
